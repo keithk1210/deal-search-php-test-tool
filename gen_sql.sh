@@ -1,0 +1,1 @@
+php sku_search.php > $1.sql
