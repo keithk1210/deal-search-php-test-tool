@@ -14,6 +14,7 @@ class TestDealSearch {
         $tables = $options['tables'];
 
 
+
         // Build child columns for SELECT
         $childColumnsSql = '';
         foreach ($childColumns as $alias => $expression) {
@@ -43,11 +44,15 @@ class TestDealSearch {
                 pstatus.value AS Parent_Status,
                 child.entity_id AS Child_ID,
                 child.sku AS Child_SKU,
-                child.store_id AS Child_Store,
                 cname.value AS Child_Name,
+                child.store_id AS Child_Store,
                 child_url_key.value AS Child_URLKey,
                 child_special_from.value AS Child_Special_From_Date,
-                child_special_to.value AS Child_Special_To_Date{$childColumnsSql} 
+                child_special_to.value AS Child_Special_To_Date,
+                deal.deal_id AS Deal_ID,
+                deal.begin_at AS Deal_Begin_At,
+                deal.end_at AS Deal_End_At,
+                deal.deal_type AS Deal_Type{$childColumnsSql} 
                 FROM {$tables['productLink']} l
                     JOIN (
                     SELECT c.* {$matchScoreExpr}
@@ -93,7 +98,14 @@ class TestDealSearch {
                         ON child_special_to.entity_id = child.entity_id
                         AND child_special_to.store_id = child.store_id
                         AND child_special_to.attribute_id = 72
-                        AND child_special_to.value > NOW(){$additionalJoinsSql}
+                        AND child_special_to.value > NOW()
+                    JOIN {$tables['categoryProduct']} cat_prod
+                        ON cat_prod.product_id = parent.entity_id
+                        AND cat_prod.category_id > 2
+                    JOIN {$tables['deal']} deal
+                        ON deal.category_id = cat_prod.category_id
+                        AND deal.begin_at <= NOW()
+                        AND deal.end_at >= NOW(){$additionalJoinsSql}
                     WHERE l.link_type_id = 3
                         AND parent.sku REGEXP '[0-9]{8}'{$additionalWhereSql}
                         ORDER BY {$orderBy}
@@ -296,9 +308,11 @@ class TestDealSearch {
             $varcharTable = 'catalog_product_entity_varchar';
             $intTable = 'catalog_product_entity_int';
             $datetimeTable = 'catalog_product_entity_datetime';
+            $dealTable ='wiserobot_deal';
+            $categoryProductTable = 'catalog_category_product';
             $storeIdsPlaceholder = '6,8,9';
             
-            $query = 'k5-afa6750-m';
+            $query = 'kp-thisisasku';
             $nPerPage = 100;
             $queryLen = strlen($query);
             if ($queryLen >= 3) {
@@ -340,7 +354,9 @@ class TestDealSearch {
                         'productLink' => $productLinkTable,
                         'varchar' => $varcharTable,
                         'int' => $intTable,
-                        'datetime' => $datetimeTable
+                        'datetime' => $datetimeTable,
+                        'deal' => $dealTable,
+                        'categoryProduct' => $categoryProductTable
                         )
             ));
             print "$sql";
@@ -353,6 +369,8 @@ class TestDealSearch {
             $intTable = 'catalog_product_entity_int';
             $datetimeTable = 'catalog_product_entity_datetime';
             $textTable = 'catalog_product_entity_text';
+            $dealTable ='wiserobot_deal';
+            $categoryProductTable = 'catalog_category_product';
             $storeIdsPlaceholder = '6,8,9';
             $nPerPage = 100;
             
@@ -397,7 +415,9 @@ class TestDealSearch {
                     'productLink' => $productLinkTable,
                     'varchar' => $varcharTable,
                     'int' => $intTable,
-                    'datetime' => $datetimeTable
+                    'datetime' => $datetimeTable,
+                    'deal' => $dealTable,
+                    'categoryProduct' => $categoryProductTable
                 )
             ));
             print "$sql";
