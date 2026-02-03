@@ -25,14 +25,12 @@ class TestDealSearch {
                 '' AS Child_SKU,
                 '' AS Child_Name,
                 -1 AS Child_Store,
-                '' AS Child_URLKey,
                 '' AS Child_Special_From_Date,
                 '' AS Child_Special_To_Date,
                 '' AS Child_Match_Score, " : "child.entity_id AS Child_ID,
                 child.sku AS Child_SKU,
-                cname.value AS Child_Name,
-                child.store_id AS Child_Store,
-                child_url_key.value AS Child_URLKey,
+                child.name AS Child_Name,
+                child_url_path.store_id AS Child_Store,
                 child_special_from.value AS Child_Special_From_Date,
                 child_special_to.value AS Child_Special_To_Date,
                 child.match_score AS Child_Match_Score,
@@ -42,31 +40,28 @@ class TestDealSearch {
         $childSubq = $only_active_deals ? '' : "JOIN (
                     SELECT c.* {$matchScoreExpr}
                     FROM (
-                        SELECT child.entity_id, child.sku, cname.value AS name, cname.store_id AS store_id
+                        SELECT child.entity_id, child.sku, cname.value AS name
                         FROM {$tables['product']} child
                         JOIN {$tables['varchar']} cname
                             ON cname.entity_id = child.entity_id
                             AND cname.attribute_id = 65
-                            AND cname.store_id IN ({$storeIdsPlaceholder})
+                            AND cname.store_id = 0
                     ) c
                 ) child ON {$childJoinCondition}";
 
-        $childJoins = $only_active_deals ? '' : "JOIN {$tables['varchar']} child_url_key
-                        ON child_url_key.entity_id = child.entity_id
-                        AND child_url_key.attribute_id = 90
-                        AND child_url_key.store_id = child.store_id
-                    JOIN {$tables['varchar']} cname
-                        ON cname.entity_id = child.entity_id
-                        AND cname.store_id = child.store_id
-                        AND cname.attribute_id = 65
+        $childJoins = $only_active_deals ? '' : "
+                    JOIN {$tables['varchar']} child_url_path
+                        ON child_url_path.entity_id = child.entity_id
+                        AND child_url_path.attribute_id = 91
+                        AND child_url_path.store_id in ({$storeIdsPlaceholder})
                     JOIN {$tables['datetime']} child_special_from
                         ON child_special_from.entity_id = child.entity_id
-                        AND child_special_from.store_id = child.store_id
+                        AND child_special_from.store_id = child_url_path.store_id
                         AND child_special_from.attribute_id = 71
                         AND child_special_from.value <= CONCAT(DATE(NOW()),' 00:00:00') 
                     JOIN {$tables['datetime']} child_special_to
                         ON child_special_to.entity_id = child.entity_id
-                        AND child_special_to.store_id = child.store_id
+                        AND child_special_to.store_id = child_url_path.store_id
                         AND child_special_to.attribute_id = 72
                         AND child_special_to.value >= CONCAT(DATE(NOW()),' 00:00:00')";
 
@@ -335,6 +330,6 @@ class TestDealSearch {
    }
 
 $tds = new TestDealSearch();
-$tds->buildNameQuery();
+$tds->buildSKUQuery();
 
 ?>
