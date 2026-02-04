@@ -10,9 +10,20 @@ class TestDealSearch {
         $orderBy = isset($options['orderBy']) ? $options['orderBy'] : 'parent.sku';
         $storeIdsPlaceholder = $options['storeIdsPlaceholder'];
         $nPerPage = $options['nPerPage'];
-        $tables = $options['tables'];
         $exactMatchColumn = $options['exact_match_col'];
         $matchingNGramsExpr = $options['matchingNGramsExpr'];
+        $nGramSize = $options['nGramSize'];
+        $minMatchingNGrams = $options['min_matching_ngrams'];
+
+        $productTable = "catalog_product_entity";
+        $productLinkTable = "catalog_product_link";
+        $varcharTable = 'catalog_product_entity_varchar';
+        $intTable = 'catalog_product_entity_int';
+        $datetimeTable = 'catalog_product_entity_datetime';
+        $textTable = 'catalog_product_entity_text';
+        $dealTable ='wiserobot_deal';
+        $categoryProductTable = 'catalog_category_product';
+        $stockStatusTable = 'cataloginventory_stock_status';
         
         $additionalJoinsSql = '';
         if (!empty($additionalJoins)) {
@@ -21,19 +32,23 @@ class TestDealSearch {
 
         $only_active_deals = empty($query);
 
-        $baseChildColumns = $only_active_deals ? "'' AS Child_ID,
+               $baseChildColumns = $only_active_deals ? "'' AS Child_ID,
                 '' AS Child_SKU,
                 '' AS Child_Name,
                 -1 AS Child_Store,
                 '' AS Child_Special_From_Date,
                 '' AS Child_Special_To_Date,
-                '' AS Child_Match_Score, " : "child.entity_id AS Child_ID,
+                '' AS Child_Match_Score,
+                '' AS Exact_Match,
+                '' AS NGrams,
+                '' AS ChildInStock": "child.entity_id AS Child_ID,
                 child.sku AS Child_SKU,
                 child.name AS Child_Name,
                 child_url_path.store_id AS Child_Store,
                 child_special_from.value AS Child_Special_From_Date,
                 child_special_to.value AS Child_Special_To_Date,
                 child.match_score AS Child_Match_Score,
+                stock_status.stock_status AS ChildInStock,
                 {$exactMatchColumn},
                 {$matchingNGramsExpr}";
 
@@ -41,8 +56,8 @@ class TestDealSearch {
                     SELECT c.* {$matchScoreExpr}
                     FROM (
                         SELECT child.entity_id, child.sku, cname.value AS name
-                        FROM {$tables['product']} child
-                        JOIN {$tables['varchar']} cname
+                        FROM {$productTable} child
+                        JOIN {$varcharTable} cname
                             ON cname.entity_id = child.entity_id
                             AND cname.attribute_id = 65
                             AND cname.store_id = 0
@@ -50,26 +65,33 @@ class TestDealSearch {
                 ) child ON {$childJoinCondition}";
 
         $childJoins = $only_active_deals ? '' : "
-                    JOIN {$tables['varchar']} child_url_path
+                    JOIN {$varcharTable} child_url_path
                         ON child_url_path.entity_id = child.entity_id
                         AND child_url_path.attribute_id = 91
                         AND child_url_path.store_id in ({$storeIdsPlaceholder})
-                    JOIN {$tables['datetime']} child_special_from
+                    JOIN {$datetimeTable} child_special_from
                         ON child_special_from.entity_id = child.entity_id
                         AND child_special_from.store_id = child_url_path.store_id
                         AND child_special_from.attribute_id = 71
                         AND child_special_from.value <= CONCAT(DATE(NOW()),' 00:00:00') 
-                    JOIN {$tables['datetime']} child_special_to
+                    JOIN {$datetimeTable} child_special_to
                         ON child_special_to.entity_id = child.entity_id
                         AND child_special_to.store_id = child_url_path.store_id
                         AND child_special_to.attribute_id = 72
-                        AND child_special_to.value >= CONCAT(DATE(NOW()),' 00:00:00')";
+                        AND child_special_to.value >= CONCAT(DATE(NOW()),' 00:00:00')
+                    JOIN {$stockStatusTable} stock_status
+                        ON stock_status.product_id = child.entity_id";
 
-        $minNTrigrams = strlen($query) > 3 ? 2 : 1;
+        $minLenForKNgrams = $nGramSize + $minMatchingNGrams - 1;
+
+        $query_no_ws = str_replace(" ",'',$query);
+        $queryLen = strlen($query_no_ws);
+
+        $minNTrigrams = $queryLen > $minLenForKNgrams ? $minMatchingNGrams : $queryLen - $nGramSize + 1;
 
         $additionalWhereSql = $only_active_deals ? '' : " AND child.match_score >= {$minNTrigrams}";
 
-        $orderBy = $only_active_deals ? 'parent.sku' : 'Exact_Match DESC, child.match_score DESC';
+        $orderBy = $only_active_deals ? 'parent.sku' : 'Exact_Match DESC,child.match_score DESC,child.sku';
 
         $sql = "SELECT DISTINCT
                 parent.entity_id AS Parent_ID,
@@ -85,37 +107,37 @@ class TestDealSearch {
                 deal.begin_at AS Deal_Begin_At,
                 deal.end_at AS Deal_End_At,
                 deal.deal_type AS Deal_Type
-                FROM {$tables['productLink']} l
+                FROM {$productLinkTable} l
                     {$childSubq}
-                    JOIN {$tables['product']} parent
+                    JOIN {$productTable} parent
                         ON parent.entity_id = l.product_id
                         AND parent.type_id = 'grouped'
-                    JOIN {$tables['int']} pstatus
+                    JOIN {$intTable} pstatus
                         ON pstatus.entity_id = parent.entity_id
                         AND pstatus.attribute_id = 89
                         AND pstatus.store_id = 0
                         AND pstatus.value = 1
-                    JOIN {$tables['varchar']} parent_url_key
+                    JOIN {$varcharTable} parent_url_key
                         ON parent_url_key.entity_id = parent.entity_id
                         AND parent_url_key.attribute_id = 90
                         AND parent_url_key.store_id = 0
-                    JOIN {$tables['varchar']} parent_url_path
+                    JOIN {$varcharTable} parent_url_path
                         ON parent_url_path.entity_id = parent.entity_id
                         AND parent_url_path.attribute_id = 91
                         AND parent_url_path.store_id in ({$storeIdsPlaceholder})
-                    JOIN {$tables['varchar']} pname
+                    JOIN {$varcharTable} pname
                         ON pname.entity_id = parent.entity_id
                         AND pname.attribute_id = 65
                         AND pname.store_id = 0
-                    JOIN {$tables['varchar']} pname_alt
+                    JOIN {$varcharTable} pname_alt
                         ON pname_alt.entity_id = parent.entity_id
                         AND pname_alt.attribute_id = 174
                         AND pname_alt.store_id = 0
                     {$childJoins}
-                    JOIN {$tables['categoryProduct']} cat_prod
+                    JOIN {$categoryProductTable} cat_prod
                         ON cat_prod.product_id = parent.entity_id
                         AND cat_prod.category_id > 2
-                    JOIN {$tables['deal']} deal
+                    JOIN {$dealTable} deal
                         ON deal.category_id = cat_prod.category_id
                         AND deal.begin_at <= NOW()
                         AND deal.end_at >= NOW(){$additionalJoinsSql}
@@ -156,7 +178,7 @@ class TestDealSearch {
             }
             $matchScoreExpr = !empty($matchScoreParts) ? implode(' + ', $matchScoreParts) : '0';
             $matchingNGramsExpr = !empty($matchingNGrams) ? "CONCAT(" . implode(',',$matchingNGrams) . ") as NGrams,": '';
-            return [$matchScoreExpr,$matchingNGramsExpr];
+            return [$matchScoreExpr,$matchingNGramsExpr,$ngramSize];
     }
 
     // protected function _buildNGramExpressions($query,$field) {
@@ -204,7 +226,7 @@ class TestDealSearch {
             $query = 'kx-avx5050';
             $nPerPage = 100;
 
-            list($matchScoreExpr,$matchingNGramsExpr) = $this->_buildNGramExpressions($query,'sku');
+            list($matchScoreExpr,$matchingNGramsExpr,$ngramSize) = $this->_buildNGramExpressions($query,'sku');
         
             $sql = $this->_buildDealSearchQuery(array(
                 'matchScoreExpr' => ", ({$matchScoreExpr}) AS match_score",
@@ -230,40 +252,26 @@ class TestDealSearch {
     }
 
     public function buildNameQuery() {
-            $productTable = "catalog_product_entity";
-            $productLinkTable = "catalog_product_link";
-            $varcharTable = 'catalog_product_entity_varchar';
-            $intTable = 'catalog_product_entity_int';
-            $datetimeTable = 'catalog_product_entity_datetime';
-            $textTable = 'catalog_product_entity_text';
-            $dealTable ='wiserobot_deal';
-            $categoryProductTable = 'catalog_category_product';
+
             $storeIdsPlaceholder = '6,8,9';
             $nPerPage = 100;
             
             $query = 'arturo fuente';
-            [$matchScoreExpr,$matchingNGramsExpr] = $this->_buildNGramExpressions($query,'name');
+            [$matchScoreExpr,$matchingNGramsExpr,$nGramSize] = $this->_buildNGramExpressions($query,'name');
 
             // Build child subquery with name and n-gram scoring
             $sql = $this->_buildDealSearchQuery(array(
                 'matchScoreExpr' => ", ({$matchScoreExpr}) AS match_score",
                 'matchingNGramsExpr' => $matchingNGramsExpr,
                 'storeIdsPlaceholder' => $storeIdsPlaceholder,
+                'nGramSize' => $nGramSize,
+                'min_matching_ngrams' => 2,
                 'nPerPage' => $nPerPage,
                 'exact_match_col' => 
                 "CASE LOWER('{$query}') = LOWER(child.name)
                     WHEN 1 THEN ' exact_match'
                     ELSE ''
                     END AS Exact_Match",
-                'tables' => array(
-                    'product' => $productTable,
-                    'productLink' => $productLinkTable,
-                    'varchar' => $varcharTable,
-                    'int' => $intTable,
-                    'datetime' => $datetimeTable,
-                    'deal' => $dealTable,
-                    'categoryProduct' => $categoryProductTable
-                )
             ),$query);
             print "$sql";
     }
@@ -330,6 +338,6 @@ class TestDealSearch {
    }
 
 $tds = new TestDealSearch();
-$tds->buildSKUQuery();
+$tds->buildNameQuery();
 
 ?>
